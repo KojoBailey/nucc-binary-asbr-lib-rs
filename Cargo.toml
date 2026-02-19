@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = [
+	"player-color-param",
+]
+
+[workspace.dependencies]
+byteorder = "1.5"
+indexmap = "2.0"
+
+[workspace.package]
+edition = "2024"
+license = "MPL-2.0"
+repository = "https://github.com/KojoBailey/nucc-binary-asbr-lib-rs"
