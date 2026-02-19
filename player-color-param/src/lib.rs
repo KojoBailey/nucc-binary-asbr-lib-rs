@@ -1,10 +1,14 @@
 use player_color_param::{PlayerColorParam, EntryKey, RGB};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-// use std::fs::File;
-use std::io::{Read, Write, Seek, SeekFrom};
+use std::io::{Read, BufReader, Write, Seek, SeekFrom};
 use std::mem::size_of;
 use indexmap::IndexMap;
 use std::collections::HashMap;
+
+pub fn from_binary_file<P: AsRef<std::path::Path>>(path: P) -> std::io::Result<PlayerColorParam> {
+    let file = std::fs::File::open(path)?;
+    from_binary_data(&mut BufReader::new(file))
+}
 
 pub fn from_binary_data<R: Read + Seek>(reader: &mut R) -> std::io::Result<PlayerColorParam> {
     const EXPECTED_VERSION: u32 = 1000;
@@ -75,6 +79,12 @@ fn read_cstring<R: Read>(reader: &mut R) -> std::io::Result<String> {
     }
     String::from_utf8(bytes)
         .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))
+}
+
+pub fn to_binary_file<P: AsRef<std::path::Path>>(data: &PlayerColorParam, path: P) -> std::io::Result<()> {
+    let bytes = to_binary_data(&data)?;
+    std::fs::write(path, bytes)?;
+    Ok(())
 }
 
 pub fn to_binary_data(param: &PlayerColorParam) -> std::io::Result<Vec<u8>> {
