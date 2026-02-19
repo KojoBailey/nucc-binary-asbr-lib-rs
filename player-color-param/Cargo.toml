@@ -1,8 +1,8 @@
 [package]
-name = "nucc-player-color-param-binary"
+name = "nucc-player-color-param-asbr"
 version = "0.1.0"
 authors = ["Kojo Bailey"]
-description = "Binary-encoded de/serialiser for the PlayerColorParam data structure used across CyberConnect2 NUCC games."
+description = "Binary-encoded de/serialiser for the PlayerColorParam data structure used in JoJo's Bizarre Adventure: All-Star Battle R."
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
