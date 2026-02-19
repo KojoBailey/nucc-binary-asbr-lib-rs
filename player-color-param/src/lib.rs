@@ -1,7 +1,7 @@
 use player_color_param::{PlayerColorParam, EntryKey, RGB};
-use byteorder::{LittleEndian, ReadBytesExt};
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 // use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Read, Write, Seek, SeekFrom};
 use std::mem::size_of;
 use indexmap::IndexMap;
 use std::collections::HashMap;
@@ -77,13 +77,58 @@ fn read_cstring<R: Read>(reader: &mut R) -> std::io::Result<String> {
         .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))
 }
 
+pub fn to_binary_data(param: &PlayerColorParam) -> std::io::Result<Vec<u8>> {
+    const HEADER_SIZE: usize = 16;
+    const STRING_LENGTH: usize = 8; // Assumed to be constant;
+    const ENTRY_SIZE: usize = 24 + STRING_LENGTH;
+    let entry_count: usize = param.entries.len();
+    let size = HEADER_SIZE + entry_count * ENTRY_SIZE;
+    let mut buffer = Vec::with_capacity(size);
+
+    const VERSION: u32 = 1000;
+    buffer.write_u32::<LittleEndian>(VERSION)?;
+    buffer.write_u32::<LittleEndian>(entry_count as u32)?;
+    buffer.write_u64::<LittleEndian>(size_of::<u64>() as u64)?;
+
+    let entries = {
+        let mut entries = param.entries.clone();
+        entries.sort_keys();
+        entries
+    };
+
+    let mut i: usize = 0;
+    for (key, value) in &entries {
+        let character_id_offset = (ENTRY_SIZE - STRING_LENGTH) * (entry_count - i) + STRING_LENGTH * i;
+        buffer.write_u64::<LittleEndian>(character_id_offset as u64)?;
+
+        buffer.write_u32::<LittleEndian>(key.costume_index as u32)?;
+
+        buffer.write_u32::<LittleEndian>(value.red as u32)?;
+        buffer.write_u32::<LittleEndian>(value.green as u32)?;
+        buffer.write_u32::<LittleEndian>(value.blue as u32)?;
+
+        i += 1;
+    }
+
+    for (key, _) in &entries {
+        buffer.write_all(key.character_id.as_bytes())?;
+        // Assume that string length is always 6,
+        // and use 8-byte alignment.
+        buffer.write_u8(0)?;
+        buffer.write_u8(0)?;
+    }
+
+    Ok(buffer)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Cursor;
+    use indexmap::IndexMap;
 
     #[test]
-    fn empty_binary() {
+    fn from_empty_binary() {
         let data = vec![
             0xE8, 0x03, 0x00, 0x00, // version: u32 = 1000
             0x00, 0x00, 0x00, 0x00, // entry_count: u32 = 0
@@ -95,7 +140,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_version() {
+    fn from_invalid_version() {
         let data: Vec<u8> = vec![
             0xE9, 0x03, 0x00, 0x00, // version: u32 = 1001
             0x00, 0x00, 0x00, 0x00, // entry_count: u32 = 0
@@ -107,7 +152,7 @@ mod tests {
     }
 
     #[test]
-    fn example_binary() {
+    fn from_example_binary() {
         let data = vec![
             0xE8, 0x03, 0x00, 0x00, // version: u32 = 1000
             0x02, 0x00, 0x00, 0x00, // entry_count: u32 = 2
@@ -146,5 +191,92 @@ mod tests {
         };
         assert!(result.entries.contains_key(&key));
         assert_eq!(result.entries[&key], RGB { red: 143, green: 246, blue: 72 });
+    }
+
+    #[test]
+    fn to_example_binary() {
+        let mut entries = IndexMap::new();
+        entries.insert(
+            EntryKey {
+                character_id: "1jnt01".to_string(),
+                costume_index: 3,
+                alt_index: 0,
+            },
+            RGB {
+                red: 64,
+                green: 82,
+                blue: 197,
+            }
+        );
+        entries.insert(
+            EntryKey {
+                character_id: "1jnt01".to_string(),
+                costume_index: 3,
+                alt_index: 1,
+            },
+            RGB {
+                red: 143,
+                green: 246,
+                blue: 72,
+            }
+        );
+        entries.insert(
+            EntryKey {
+                character_id: "2jsp01".to_string(),
+                costume_index: 0,
+                alt_index: 0,
+            },
+            RGB {
+                red: 0,
+                green: 0,
+                blue: 0,
+            }
+        );
+        entries.insert(
+            EntryKey {
+                character_id: "1jnt01".to_string(),
+                costume_index: 2,
+                alt_index: 0,
+            },
+            RGB {
+                red: 255,
+                green: 255,
+                blue: 255,
+            }
+        );
+
+        let param = PlayerColorParam { entries };
+        let binary_data = to_binary_data(&param).unwrap();
+
+        let expected_output = vec![
+            0xE8, 0x03, 0x00, 0x00, // version: u32 = 1000
+            0x04, 0x00, 0x00, 0x00, // entry_count: u32 = 4
+            0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // data_offset: u64 = 8
+            0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // character_id_ptr: u64 = 96
+            0x02, 0x00, 0x00, 0x00, // costume_index: u32 = 2
+            0xFF, 0x00, 0x00, 0x00, // red: u32 = 255
+            0xFF, 0x00, 0x00, 0x00, // blue: u32 = 255
+            0xFF, 0x00, 0x00, 0x00, // green: u32 = 255
+            0x50, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // character_id_ptr: u64 = 80
+            0x03, 0x00, 0x00, 0x00, // costume_index: u32 = 3
+            0x40, 0x00, 0x00, 0x00, // red: u32 = 64
+            0x52, 0x00, 0x00, 0x00, // blue: u32 = 82
+            0xC5, 0x00, 0x00, 0x00, // green: u32 = 197
+            0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // character_id_ptr: u64 = 64
+            0x03, 0x00, 0x00, 0x00, // costume_index: u32 = 3
+            0x8F, 0x00, 0x00, 0x00, // red: u32 = 143
+            0xF6, 0x00, 0x00, 0x00, // blue: u32 = 246
+            0x48, 0x00, 0x00, 0x00, // green: u32 = 72
+            0x30, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // character_id_ptr: u64 = 48
+            0x00, 0x00, 0x00, 0x00, // costume_index: u32 = 0
+            0x00, 0x00, 0x00, 0x00, // red: u32 = 0
+            0x00, 0x00, 0x00, 0x00, // blue: u32 = 0
+            0x00, 0x00, 0x00, 0x00, // green: u32 = 0
+            0x31, 0x6A, 0x6E, 0x74, 0x30, 0x31, 0x00, 0x00, // character_id = "1jnt01"
+            0x31, 0x6A, 0x6E, 0x74, 0x30, 0x31, 0x00, 0x00, // character_id = "1jnt01"
+            0x31, 0x6A, 0x6E, 0x74, 0x30, 0x31, 0x00, 0x00, // character_id = "1jnt01"
+            0x32, 0x6A, 0x73, 0x70, 0x30, 0x31, 0x00, 0x00, // character_id = "2jsp01"
+        ];
+        assert_eq!(binary_data, expected_output);
     }
 }

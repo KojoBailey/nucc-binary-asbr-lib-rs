@@ -33,7 +33,7 @@ dependencies = [
 [[package]]
 name = "nucc-player-color-param"
 version = "0.1.0"
-source = "git+https://github.com/KojoBailey/nucc-binary-lib-rs.git#c4bc29c31f8fe3caa5fbd1e7981d951dcccaed22"
+source = "git+https://github.com/KojoBailey/nucc-binary-lib-rs.git#8c05d17d55b87b51f2c6a79591bdd7e663494098"
 dependencies = [
  "indexmap",
 ]
